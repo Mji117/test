@@ -3,10 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <title>دمج الترجمة مع الفيديو</title>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io@4.4.1/dist/socket.io.min.js"></script>
+  <style>
+    #progress {
+      width: 100%;
+      background-color: #f3f3f3;
+    }
+    #progress-bar {
+      width: 0;
+      height: 30px;
+      background-color: #4caf50;
+    }
+  </style>
 </head>
 <body>
   <h2>اختر الفيديو والترجمة</h2>
-  <form action="/merge" method="post" enctype="multipart/form-data">
+  <form id="uploadForm" action="/merge" method="post" enctype="multipart/form-data">
     <label>ملف الفيديو:</label><br>
     <input type="file" name="video" required><br><br>
 
@@ -15,5 +27,39 @@
 
     <input type="submit" value="دمج">
   </form>
+
+  <div id="progress" style="display:none;">
+    <div id="progress-bar"></div>
+  </div>
+
+  <script>
+    const socket = io.connect('http://localhost:8080');
+    
+    socket.on('processing_start', function(data) {
+      alert(data.message);
+    });
+
+    socket.on('progress_update', function(data) {
+      let time_position = data.progress;
+      let percentage = (parseFloat(time_position) / 100) * 100;  // تقدير للنسبة المئوية
+      document.getElementById('progress').style.display = 'block';
+      document.getElementById('progress-bar').style.width = percentage + '%';
+    });
+
+    socket.on('processing_complete', function(data) {
+      alert(data.message);
+      // يمكن إضافة رابط لتحميل الفيديو إذا كان متاحًا
+    });
+
+    const form = document.getElementById('uploadForm');
+    form.addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      let formData = new FormData(form);
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', '/merge', true);
+      xhr.send(formData);
+    });
+  </script>
 </body>
 </html>
