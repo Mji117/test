@@ -1,17 +1,20 @@
-from flask import Flask, request, send_file
+from flask import Flask, render_template, request, send_file
+from flask_socketio import SocketIO, emit
 import subprocess
 import os
 import uuid
 
 app = Flask(__name__)
+socketio = SocketIO(app)
+
 UPLOAD_FOLDER = 'uploads'
-FFMPEG_PATH = './ffmpeg'  # ffmpeg static داخل نفس المجلد
+FFMPEG_PATH = './ffmpeg'  # تأكد من أنك وضعت ffmpeg في نفس المجلد
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route('/')
 def index():
-    return open("index.html", encoding="utf-8").read()
+    return render_template('index.html')
 
 @app.route('/merge', methods=['POST'])
 def merge_subtitle():
@@ -25,8 +28,8 @@ def merge_subtitle():
     video.save(video_filename)
     subtitle.save(subtitle_filename)
 
-    # إعطاء صلاحيات تنفيذ لـ ffmpeg
-    os.chmod(FFMPEG_PATH, 0o755)
+    # بدء المعالجة عبر WebSocket
+    socketio.emit('processing_start', {'message': 'عملية الدمج بدأت'})
 
     command = [
         FFMPEG_PATH,
@@ -36,12 +39,20 @@ def merge_subtitle():
         output_filename
     ]
 
-    try:
-        subprocess.run(command, check=True)
-        return send_file(output_filename, as_attachment=True)
-    except subprocess.CalledProcessError:
-        return "حدث خطأ أثناء الدمج", 500
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # مراقبة تقدم المعالجة
+    for line in process.stderr:
+        line = line.decode('utf-8')
+        if "time=" in line:
+            # استخراج الوقت المتقدم في المعالجة
+            time_position = line.split("time=")[1].split(" ")[0]
+            socketio.emit('progress_update', {'progress': time_position})
+
+    process.wait()  # الانتظار حتى انتهاء المعالجة
+    socketio.emit('processing_complete', {'message': 'تم الدمج بنجاح! يمكنك تحميل الفيديو الآن.'})
+
+    return send_file(output_filename, as_attachment=True)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-  
+    socketio.run(app, host='0.0.0.0', port=8080)
